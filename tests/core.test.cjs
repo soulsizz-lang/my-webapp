@@ -1,0 +1,35 @@
+// Run with Node.js: node tests/core.test.cjs
+const vm=require('node:vm'),fs=require('node:fs'),assert=require('node:assert/strict'),path=require('node:path');
+const memory=new Map();const box={window:{},crypto:require('node:crypto').webcrypto,localStorage:{getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)}};
+vm.createContext(box);vm.runInContext(fs.readFileSync(path.join(__dirname,'../core.js'),'utf8'),box);const C=box.window.Career,T={role:'teacher'};
+let checks=0;function check(fn){fn();checks++}
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../jobs.js'),'utf8'),box);
+check(()=>assert.equal(box.window.JOBS.length,200));
+check(()=>assert.equal(new Set(box.window.JOBS.map(j=>j.name)).size,200));
+check(()=>{for(let g=0;g<8;g++)assert.equal(box.window.JOBS.filter(j=>j.group===g).length,25)});
+const all=C.demo('list',{},T),c=C.demo('get',{classId:all[0].id},T),s=c.students[0],u={role:'student',sid:s.id,classId:c.id};
+check(()=>assert.equal(all.length,3));check(()=>assert.equal(c.students.length,25));
+check(()=>{for(const x of c.students){assert.equal(C.targets(c,x.id).length,5);assert(!C.targets(c,x.id).includes(x.id));assert.equal(c.students.filter(y=>C.targets(c,y.id).includes(x.id)).length,5)}});
+check(()=>assert.throws(()=>C.demo('stage',{classId:c.id,stage:2},u)));
+check(()=>assert.throws(()=>C.demo('get',{classId:all[1].id},u)));
+C.demo('choice',{classId:c.id,job:13,reason:'로봇 만들기',submitted:true},u);
+check(()=>assert.throws(()=>C.demo('choice',{classId:c.id,job:201,reason:'오류',submitted:true},u)));
+C.demo('choice',{classId:c.id,job:200,reason:'체력 훈련을 돕고 싶어요',submitted:true},u);
+check(()=>assert.equal(C.demo('get',{classId:c.id},u).students[0].choice.job,200));
+const next=c.students[1],u2={role:'student',sid:next.id,classId:c.id};C.demo('choice',{classId:c.id,job:1,reason:'실험',submitted:true},u2);
+C.demo('stage',{classId:c.id,stage:2},T);
+check(()=>assert.throws(()=>C.demo('choice',{classId:c.id,job:1,reason:'변경'},u)));
+check(()=>assert.throws(()=>C.demo('vote',{classId:c.id,to:s.id,job:1,reason:'나'},u)));
+for(const j of [1,2])C.demo('vote',{classId:c.id,to:next.id,job:j,reason:'관찰을 잘해요'},u);
+check(()=>assert.equal(C.demo('get',{classId:c.id},T).votes.length,1));
+check(()=>assert.equal(C.demo('get',{classId:c.id},u2).votes.length,0));
+C.demo('stage',{classId:c.id,stage:3},T);
+check(()=>assert.equal(C.demo('get',{classId:c.id},u2).votes[0].from,undefined));
+const fake={students:[{id:'s',choice:{job:13}}],votes:[{to:'s',job:13},{to:'s',job:13},{to:'s',job:2},{to:'s',job:3},{to:'s',job:3,hidden:true}]};
+check(()=>assert.deepEqual(Array.from(C.candidates(fake,'s')),[2,3]));
+fake.votes=[];check(()=>assert.equal(C.candidates(fake,'s').length,199));
+const items=[13,2].map(job=>Object.fromEntries([['job',job],...C.fields.map(f=>[f,''])]));
+check(()=>assert.doesNotThrow(()=>C.validateResearch(items,false)));
+check(()=>assert.throws(()=>C.validateResearch(items,true)));
+check(()=>assert.throws(()=>C.validateResearch([items[0],items[0]],false)));
+console.log(`${checks} classroom rule checks passed.`);
